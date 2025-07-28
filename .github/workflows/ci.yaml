@@ -1,0 +1,21 @@
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Build
+    steps:
+      - uses: mlugg/setup-zig@v2
+      - uses: actions/checkout@v4
+      - run: zig build test
+
+  build:
+    runs-on: ubuntu-latest
+    name: Build
+    steps:
+      - uses: mlugg/setup-zig@v2
+      - uses: actions/checkout@v4
+      - run: zig build
