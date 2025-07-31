@@ -14,6 +14,11 @@ fn printUint(writer: anytype, comptime T: type, sixOctets: T) !void {
     }
 }
 
+pub const EthFrametype = enum(u16) {
+    IPv4 = 0x0800,
+    ARP = 0x0806,
+};
+
 pub const ethFrame = packed struct {
     dst: u48,
     src: u48,
@@ -125,7 +130,8 @@ pub const ping = packed struct {
     ) !void {
         _ = fmt;
         _ = options;
-        try writer.print("pingtype: {x}, code: {x}, checksum: {x}, identifier: {x}, seqNum: {x}, timeStamp: {x}", .{ self.pingType, self.code, self.checksum, self.identifier, self.seqNum, self.timeStamp });
+        try writer.print("pingtype: {x}, code: {x}, checksum: {x}, identifier: {x}, seqNum: {x}, timeStamp: {x}", //
+            .{ self.pingType, self.code, self.checksum, self.identifier, self.seqNum, self.timeStamp });
     }
 };
 
