@@ -17,6 +17,7 @@ fn printUint(writer: anytype, comptime T: type, sixOctets: T) !void {
 pub const EthFrametype = enum(u16) {
     IPv4 = 0x0800,
     ARP = 0x0806,
+    _,
 };
 
 pub const ethFrame = packed struct {
@@ -139,6 +140,7 @@ pub const ipProtocol = enum(u8) {
     ICMP = 0x01,
     TCP = 0x06,
     UDP = 0x11,
+    _,
 };
 
 pub const ipHeader = packed struct {
