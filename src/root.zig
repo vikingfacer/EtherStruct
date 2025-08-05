@@ -135,6 +135,12 @@ pub const ping = packed struct {
     }
 };
 
+pub const ipProtocol = enum(u8) {
+    ICMP = 0x01,
+    TCP = 0x06,
+    UDP = 0x11,
+};
+
 pub const ipHeader = packed struct {
     version: u4,
     length: u4,
