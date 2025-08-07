@@ -32,6 +32,12 @@ pub const ethFrame = packed struct {
             .frameType = std.mem.nativeToBig(u16, frameType),
         };
     }
+    pub fn fromBytes(data: []const u8) ethFrame {
+        var eth = std.mem.bytesToValue(ethFrame, data);
+        eth.frameType = std.mem.nativeToBig(u16, eth.frameType);
+        return eth;
+    }
+
     pub fn format(
         self: ethFrame,
         comptime fmt: []const u8,
@@ -48,6 +54,16 @@ pub const ethFrame = packed struct {
         try writer.print("type: 0x{x}{x}", .{ asBytes[0], asBytes[1] });
     }
 };
+
+test "From Bytes" {
+    const localhostEth =
+        [_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00 };
+    const eth = ethFrame.fromBytes(&localhostEth);
+
+    try testing.expect(eth.dst == 0x0);
+    try testing.expect(eth.src == 0x0);
+    try testing.expect(eth.frameType == 0x800);
+}
 
 test "Ethernet header size == " {
     try testing.expect(@bitSizeOf(ethFrame) / 8 == 14);
