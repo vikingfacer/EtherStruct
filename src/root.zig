@@ -23,12 +23,27 @@ pub const EthFrametype = enum(u16) {
 ///
 ///compile time apply to struct
 ///
-fn compApplyToStruct(T: anytype, func: anytype, d: *T) void {
+fn compApplyToStruct(comptime T: type, func: anytype, d: *T) void {
     inline for (std.meta.fields(T)) |f| {
         if (@bitSizeOf(f.type) % 8 == 0) {
             @field(d, f.name) = func(f.type, @field(d, f.name));
         }
     }
+}
+
+pub fn NetworkBytesToNativeValue(comptime T: type, bytes: []const u8) T {
+    var structReturned: T = undefined;
+
+    std.mem.copyForwards(u8, std.mem.asBytes(&structReturned), bytes);
+    compApplyToStruct(T, std.mem.bigToNative, &structReturned);
+
+    return structReturned;
+}
+
+pub fn toNetworkBytes(comptime T: type, nativeStruct: T) []const u8 {
+    var bytes: T = nativeStruct;
+    compApplyToStruct(T, std.mem.bigToNative, &bytes);
+    return std.mem.toBytes(bytes)[0 .. @bitSizeOf(T) / 8];
 }
 
 pub const ethFrame = packed struct {
