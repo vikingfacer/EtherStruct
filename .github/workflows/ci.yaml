@@ -6,7 +6,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    name: Build
+    name: Tests
     steps:
       - uses: mlugg/setup-zig@v2
       - uses: actions/checkout@v4
@@ -19,3 +19,25 @@ jobs:
       - uses: mlugg/setup-zig@v2
       - uses: actions/checkout@v4
       - run: zig build
+      - run: zig build docs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          name: module_docs
+          path: ./zig-out/docs
+
+  docs:
+    runs-on: ubuntu-latest
+    name: Docs
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    needs: build
+    steps:
+      - uses: actions/deploy-pages@v4
+        with:
+          artifact_name: module_docs
