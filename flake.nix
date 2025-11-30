@@ -1,25 +1,39 @@
 {
-  description = "zig replayer flake";
+  description = "zig cappy development enviroment ";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    zig.url = "github:mitchellh/zig-overlay";
+    zls-overlay.url = "github:zigtools/zls/0.15.0";
+    # Used for shell.nix
+    flake-compat = {
+      url = "github:edolstra/flake-compat";
+      flake = false;
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let leg = nixpkgs.legacyPackages.${system};
-      in {
-        devShells.default = leg.mkShell {
-          nativeBuildInputs = [ leg.zig leg.libpcap ];
-          packages = [ leg.pkg-config leg.zls leg.glow ];
+  outputs = { self, nixpkgs, flake-utils, ... }@inputs:
+    let
+      overlays = [
+        # Other overlays
+        (final: prev: { zigpkgs = inputs.zig.packages.${prev.system}; })
+      ];
+      # Our supported systems are the same supported systems as the Zig binaries
+      systems = builtins.attrNames inputs.zig.packages;
+    in flake-utils.lib.eachSystem systems (system:
+      let
+        pkgs = import nixpkgs { inherit overlays system; };
+        zig = pkgs.zigpkgs.${"0.15.1"};
+        zls = inputs.zls-overlay.packages.${system}.zls.overrideAttrs
+          (old: { nativeBuildInputs = [ zig ]; });
+      in rec {
+        devShells.default = pkgs.mkShell {
+          nativeBuildInputs = with pkgs; [ pkgs.libpcap zls zig ];
         };
-        packages.default = leg.stdenv.mkDerivation {
-          name = "replayer";
-          src = self;
-          buildInputs = [ leg.zig leg.libpcap ];
-          buildPhase =
-            "export XDG_CACHE_HOME=$(mktemp -d); mkdir $out; zig build --prefix $out ";
-        };
+
+        # For compatibility with older versions of the `nix` binary
+        devShell = self.devShells.${system}.default;
       });
 }
+
