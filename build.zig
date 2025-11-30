@@ -13,13 +13,13 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    //const lib = b.addLibrary(.{
-    //    .linkage = .static,
-    //    .name = "EtherStruct",
-    //    .root_module = etherStruct_mod,
-    //});
+    const lib = b.addLibrary(.{
+        .linkage = .static,
+        .name = "EtherStruct",
+        .root_module = etherStruct_mod,
+    });
 
-    //b.installArtifact(lib);
+    b.installArtifact(lib);
 
     const test_step = b.step("test", "Run unit tests");
     const lib_unit_tests = b.addTest(.{
