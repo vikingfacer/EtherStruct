@@ -1,28 +1,23 @@
+//! This  module provides structures and functions to work with network packets
+//! by converting bytes into packed structures for Ethernet, IP, TCP, UDP
+
 const std = @import("std");
 const testing = std.testing;
 
-// want print to be as indexed and to and from bytes to be as in memory
-fn printUint(writer: anytype, comptime T: type, sixOctets: T) !void {
-    const bytes = std.mem.asBytes(&sixOctets);
-    const bitSize = @bitSizeOf(T) / 8;
-    var delimiter: u8 = ':';
-    for (0..bitSize) |i| {
-        if (i == (bitSize - 1)) {
-            delimiter = ' ';
-        }
-        try writer.print("{x}{c}", .{ bytes[i], delimiter });
-    }
+/// returns Packed Size of type
+///
+/// item: type of item
+/// returns: packed size of item
+pub fn packedSize(item: anytype) comptime_int {
+    return @bitSizeOf(item) / 8;
 }
 
-pub const EthFrametype = enum(u16) {
-    IPv4 = 0x0800,
-    ARP = 0x0806,
-    _,
-};
-
+/// Apply function to struct fields
 ///
-///compile time apply to struct
-///
+/// T: struct type
+/// func: function applied to field
+/// d: pointer to struct
+/// returns: void
 fn compApplyToStruct(comptime T: type, func: anytype, d: *T) void {
     inline for (std.meta.fields(T)) |f| {
         if (@bitSizeOf(f.type) % 8 == 0) {
@@ -31,7 +26,12 @@ fn compApplyToStruct(comptime T: type, func: anytype, d: *T) void {
     }
 }
 
-pub fn NetworkBytesToNativeValue(comptime T: type, bytes: []const u8) T {
+/// Serializes bytes to native value
+///
+/// T: struct type
+/// bytes: network bytes
+/// returns: T with set fields in Native order
+pub fn toNativeValue(comptime T: type, bytes: []const u8) T {
     var structReturned: T = undefined;
 
     std.mem.copyForwards(u8, std.mem.asBytes(&structReturned), bytes);
@@ -40,146 +40,32 @@ pub fn NetworkBytesToNativeValue(comptime T: type, bytes: []const u8) T {
     return structReturned;
 }
 
+/// Deserializes bytes to network bytes
+///
+/// T: struct type
+/// nativeStruct: struct containing data
+/// returns: Network order bytes
 pub fn toNetworkBytes(comptime T: type, nativeStruct: T) []const u8 {
     var bytes: T = nativeStruct;
-    compApplyToStruct(T, std.mem.bigToNative, &bytes);
+    compApplyToStruct(T, std.mem.nativeToBig, &bytes);
     return std.mem.toBytes(bytes)[0 .. @bitSizeOf(T) / 8];
 }
 
+/// Ethernet frame type enum
+pub const EthFrametype = enum(u16) {
+    IPv4 = 0x0800,
+    ARP = 0x0806,
+    _,
+};
+
+/// Ethernet frame structure
 pub const ethFrame = packed struct {
     dst: u48,
     src: u48,
     frameType: u16,
-
-    //    pub fn fromBytes(data: []const u8) ethFrame {
-    //        var eth = std.mem.bytesToValue(ethFrame, data);
-    //        compApplyToStruct(ethFrame, std.mem.bigToNative, &eth);
-    //        return eth;
-    //    }
-    //
-    //    pub fn toBytes(eth: *ethFrame) []const u8 {
-    //        compApplyToStruct(ethFrame, std.mem.nativeToBig, eth);
-    //        // struct is packed need to trim the end
-    //        return std.mem.asBytes(eth)[0 .. @bitSizeOf(ethFrame) / 8];
-    //    }
-
-    pub fn format(
-        self: ethFrame,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
-        try writer.print("source: ", .{});
-        try printUint(writer, u48, self.src);
-        try writer.print("destination: ", .{});
-        try printUint(writer, u48, self.dst);
-        const asBytes = std.mem.asBytes(&self.frameType);
-        try writer.print("type: 0x{x}{x}", .{ asBytes[0], asBytes[1] });
-    }
 };
 
-test "From Bytes" {
-    const localhostEth =
-        [_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00 };
-    const eth = ethFrame.fromBytes(&localhostEth);
-
-    try testing.expect(eth.dst == 0x0);
-    try testing.expect(eth.src == 0x0);
-    try testing.expect(eth.frameType == 0x800);
-}
-
-test "Ethernet header size == " {
-    try testing.expect(@bitSizeOf(ethFrame) / 8 == 14);
-}
-const test_allocator = std.testing.allocator;
-test "Ethernet Format test" {
-    const macAddr: u48 = 0xaabbccddeeff;
-    const frameType: u16 = 0x1234;
-    const eframe: ethFrame = .{ .dst = macAddr, .src = macAddr, .frameType = frameType };
-    const eframeStr = try std.fmt.allocPrint(test_allocator, "{}", .{eframe});
-    defer test_allocator.free(eframeStr);
-
-    try testing.expectEqualSlices(
-        u8, //
-        "source: 0xaabbccddeeff destination: 0xaabbccddeeff type: 0x1234", //
-        eframeStr, //
-    );
-}
-
-pub const icmpHeader = packed struct {
-    icmpType: u8,
-    code: u8,
-    checksum: u16,
-    roh: u32, //rest of header
-    pub fn init(icmpType: u8, code: u8, checksum: u16, roh: u32) icmpHeader {
-        return .{
-            .icmpType = icmpType, //
-            .code = code, //
-            .checksum = std.mem.nativeToBig(u16, checksum), //
-            .roh = std.mem.nativeToBig(u32, roh),
-        };
-    }
-    pub fn format(
-        self: icmpHeader,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
-        try writer.print("type: 0x{x}, code: 0x{x}, checksum: 0x{x}, roh: 0x{x}", //
-            .{ self.icmpType, self.code, self.checksum, self.roh });
-    }
-};
-
-test "icmp header format" {
-    const icmp: icmpHeader = icmpHeader.init(0xff, 0xee, 0xaabb, 0xffeeffff);
-
-    const icmpStr = try std.fmt.allocPrint(test_allocator, "{}", .{icmp});
-    defer test_allocator.free(icmpStr);
-    const expected = "type: 0xff, code: 0xee, checksum: 0xbbaa, roh: 0xffffeeff";
-    try testing.expectEqualSlices(u8, icmpStr, expected);
-}
-
-pub const ping = packed struct {
-    pingType: u8,
-    code: u8,
-    checksum: u16,
-    identifier: u16,
-    seqNum: u16,
-    timeStamp: u64,
-    pub fn init(
-        pingType: u8,
-        code: u8,
-        checksum: u16,
-        identifier: u16,
-        seqNum: u16,
-        timeStamp: u64,
-    ) ping {
-        return .{
-            .pingType = pingType,
-            .code = code,
-            .checksum = checksum,
-            .identifier = identifier,
-            .seqNum = seqNum,
-            .timeStamp = timeStamp,
-        };
-    }
-    pub fn format(
-        self: ping,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
-        try writer.print("pingtype: {x}, code: {x}, checksum: {x}, identifier: {x}, seqNum: {x}, timeStamp: {x}", //
-            .{ self.pingType, self.code, self.checksum, self.identifier, self.seqNum, self.timeStamp });
-    }
-};
-
+/// IP Protocol type enum
 pub const ipProtocol = enum(u8) {
     ICMP = 0x01,
     TCP = 0x06,
@@ -187,22 +73,31 @@ pub const ipProtocol = enum(u8) {
     _,
 };
 
+/// IP fragmentation flag
 const flags = enum(u3) {
     Reserved,
     DoNotFragment,
     MoreFragments,
 };
 
+/// truncates u16 to u3 for IP fragmentation flag
+///
+/// frag: fragmentation bytes
+/// return: u3: fragmentation flag value
 fn fragmentFlags(frag: u16) u3 {
     return @truncate(frag >> 13);
 }
 
-fn fragementOffset(frag: u16) u13 {
+/// truncates u16 to u13 for IP fragmentation offset
+///
+/// frag: fragmentation bytes
+/// return: u13: fragmentation offset
+fn fragmentOffset(frag: u16) u13 {
     return @truncate(frag);
 }
 
+/// IP header struct
 pub const ipHeader = packed struct {
-    // length needs to come first idk why
     length: u4,
     version: u4,
     DSCP: u6,
@@ -215,79 +110,7 @@ pub const ipHeader = packed struct {
     checksum: u16,
     source: u32,
     destination: u32,
-
-    //pub fn fromBytes(data: []const u8) ipHeader {
-    //    var ip = std.mem.bytesToValue(ipHeader, data);
-    //    compApplyToStruct(ipHeader, std.mem.bigToNative, &ip);
-    //    return ip;
-    //}
-
-    //pub fn toBytes(ip: *ipHeader) []const u8 {
-    //    compApplyToStruct(ipHeader, std.mem.nativeToBig, ip);
-    //    // struct is packed need to trim the end
-    //    return std.mem.asBytes(ip)[0 .. @bitSizeOf(ipHeader) / 8];
-    //}
-
-    pub fn format(
-        self: ipHeader,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
-
-        try writer.print("0b{b:0>4} Version: {d:0>2}, ", .{ self.version, self.version });
-        try writer.print("0b{b:0>4} Length: {d:0>2}, ", .{ self.length, self.length });
-        try writer.print("0b{b:0>6} DSCP: {d:0>3}, ", .{ self.DSCP, self.DSCP });
-        try writer.print("0b{b:0>1} ECN: {d:0>1}, ", .{ self.ECN, self.ECN });
-        try writer.print("Total Length: {d}, ", .{self.totalLength});
-        try writer.print("identification: (0x{x}) {d}, ", .{ self.identification, self.identification });
-        try writer.print("Flags: 0x{x}, ", .{fragmentFlags(self.fragment)});
-        try writer.print("Fragment Offset: 0x{x}, ", .{fragementOffset(self.fragment)});
-        try writer.print("TTL: {d}, ", .{self.ttl});
-        try writer.print("Protocol: {d}, ", .{self.protocol});
-        try writer.print("Header Checksum: 0x{x}, ", .{self.checksum});
-        const src = std.mem.asBytes(&self.source);
-        try writer.print("Source Address: {d}.{d}.{d}.{d}, ", //
-            .{ src[0], src[1], src[2], src[3] });
-        const dst = std.mem.asBytes(&self.destination);
-        try writer.print("Destination Address: {d}.{d}.{d}.{d}, ", //
-            .{ dst[0], dst[1], dst[2], dst[3] });
-    }
 };
-
-test "IP header size == 20" {
-    try testing.expect(@bitSizeOf(ipHeader) / 8 == 20);
-}
-//Internet Protocol Version 4, Src: 192.168.1.122, Dst: 192.168.1.1
-//    0100 .... = Version: 4
-//    .... 0101 = Header Length: 20 bytes (5)
-//    Differentiated Services Field: 0x00 (DSCP: CS0, ECN: Not-ECT)
-//    Total Length: 84
-//    Identification: 0x883a (34874)
-//    010. .... = Flags: 0x2, Don't fragment
-//        0... .... = Reserved bit: Not set
-//        .1.. .... = Don't fragment: Set
-//        ..0. .... = More fragments: Not set
-//    ...0 0000 0000 0000 = Fragment Offset: 0
-//    Time to Live: 64
-//    Protocol: ICMP (1)
-//    Header Checksum: 0x2ea3 [validation disabled]
-//    [Header checksum status: Unverified]
-//    Source Address: 192.168.1.122
-//    Destination Address: 192.168.1.1
-
-const ipBytes = [_]u8{
-    0x45, 0x00, 0x00, 0x54, 0x88, 0x3a, 0x40, //
-    0x00, 0x40, 0x01, 0x2e, 0xa3, 0xc0, 0xa8, //
-    0x01, 0x7a, 0xc0, 0xa8, 0x01, 0x01,
-};
-
-test "IP header test" {
-    var iphdr = ipHeader.fromBytes(&ipBytes);
-    try std.testing.expectEqualStrings(&ipBytes, iphdr.toBytes());
-}
 
 pub fn ipchecksum(buf: []u16) u16 {
     var accumulator: u16 = 0;
@@ -297,6 +120,7 @@ pub fn ipchecksum(buf: []u16) u16 {
     }
     return accumulator;
 }
+
 test "ipchecksumZeros" {
     var zeros = [_]u16{0} ** 10;
     try testing.expect(ipchecksum(&zeros) == 0);
@@ -324,41 +148,157 @@ pub const tcpHeader = packed struct {
     windowSize: u16,
     checkSum: u16,
     urgentPrt: u16,
-    pub fn format(
-        self: tcpHeader,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
-        writer.print("src: {}, dst: {}", .{ self.srcPort, self.dstPort });
-    }
 };
 
 test "TCP header no options size == 20" {
-    std.debug.print("size: {} \n", .{@bitSizeOf(tcpHeader) / 8});
     try testing.expect(@bitSizeOf(tcpHeader) / 8 == 20);
 }
 
-// Transmission Control Protocol, Src Port: 55950, Dst Port: 443, Seq: 1, Ack: 1, Len: 0
-//     Source Port: 55950
-//     Destination Port: 443
-//     [Stream index: 0]
-//     [Conversation completeness: Incomplete (4)]
-//     [TCP Segment Len: 0]
-//     Sequence Number: 1    (relative sequence number)
-//     Sequence Number (raw): 1353731647
-//     [Next Sequence Number: 1    (relative sequence number)]
-//     Acknowledgment Number: 1    (relative ack number)
-//     Acknowledgment number (raw): 1407010374
-//     1000 .... = Header Length: 32 bytes (8)
-//     Flags: 0x010 (ACK)
-//     Window: 501
-//     [Calculated window size: 501]
-//     [Window size scaling factor: -1 (unknown)]
-//     Checksum: 0xb34d [unverified]
-//     [Checksum Status: Unverified]
-//     Urgent Pointer: 0
-//     Options: (12 bytes), No-Operation (NOP), No-Operation (NOP), Timestamps
-//     [Timestamps]
+const udpHeader = struct {
+    srcPort: u16,
+    dstPort: u16,
+    legnth: u16,
+    checksum: u16,
+};
+
+//Frame 166: 66 bytes on wire (528 bits), 66 bytes captured (528 bits) on interface wlp4s0, id 0
+//Ethernet II, Src: Intel_c9:6f:0d (18:5e:0f:c9:6f:0d), Dst: TpLinkPte_ed:d3:14 (dc:62:79:ed:d3:14)
+//    Destination: TpLinkPte_ed:d3:14 (dc:62:79:ed:d3:14)
+//        Address: TpLinkPte_ed:d3:14 (dc:62:79:ed:d3:14)
+//        .... ..0. .... .... .... .... = LG bit: Globally unique address (factory default)
+//        .... ...0 .... .... .... .... = IG bit: Individual address (unicast)
+//    Source: Intel_c9:6f:0d (18:5e:0f:c9:6f:0d)
+//        Address: Intel_c9:6f:0d (18:5e:0f:c9:6f:0d)
+//        .... ..0. .... .... .... .... = LG bit: Globally unique address (factory default)
+//        .... ...0 .... .... .... .... = IG bit: Individual address (unicast)
+//    Type: IPv4 (0x0800)
+//Internet Protocol Version 4, Src: 192.168.0.24, Dst: 142.250.64.106
+//    0100 .... = Version: 4
+//    .... 0101 = Header Length: 20 bytes (5)
+//    Differentiated Services Field: 0x00 (DSCP: CS0, ECN: Not-ECT)
+//    Total Length: 52
+//    Identification: 0x999d (39325)
+//    010. .... = Flags: 0x2, Don't fragment
+//    ...0 0000 0000 0000 = Fragment Offset: 0
+//    Time to Live: 64
+//    Protocol: TCP (6)
+//    Header Checksum: 0x1102 [validation disabled]
+//    [Header checksum status: Unverified]
+//    Source Address: 192.168.0.24
+//    Destination Address: 142.250.64.106
+//Transmission Control Protocol, Src Port: 40834, Dst Port: 443, Seq: 1, Ack: 204, Len: 0
+//    Source Port: 40834
+//    Destination Port: 443
+//    [Stream index: 6]
+//    [Conversation completeness: Incomplete (12)]
+//    [TCP Segment Len: 0]
+//    Sequence Number: 1    (relative sequence number)
+//    Sequence Number (raw): 2176726243
+//    [Next Sequence Number: 1    (relative sequence number)]
+//    Acknowledgment Number: 204    (relative ack number)
+//    Acknowledgment number (raw): 3660135843
+//    1000 .... = Header Length: 32 bytes (8)
+//    Flags: 0x010 (ACK)
+//    Window: 696
+//    [Calculated window size: 696]
+//    [Window size scaling factor: -1 (unknown)]
+//    Checksum: 0xc0d1 [unverified]
+//    [Checksum Status: Unverified]
+//    Urgent Pointer: 0
+//    Options: (12 bytes), No-Operation (NOP), No-Operation (NOP), Timestamps
+//        TCP Option - No-Operation (NOP)
+//        TCP Option - No-Operation (NOP)
+//        TCP Option - Timestamps: TSval 2807897796, TSecr 834059146
+//            Kind: Time Stamp Option (8)
+//            Length: 10
+//            Timestamp value: 2807897796
+//            Timestamp echo reply: 834059146
+//    [Timestamps]
+//    [SEQ/ACK analysis]
+//        [This is an ACK to the segment in frame: 165]
+//        [The RTT to ACK the segment was: 0.040872581 seconds]
+
+const TCPAckBytes = [_]u8{
+    0xdc, 0x62, 0x79, 0xed, 0xd3, 0x14, 0x18, //
+    0x5e, 0x0f, 0xc9, 0x6f, 0x0d, 0x08, 0x00, //
+    0x45, 0x00, 0x00, 0x34, 0x99, 0x9d, 0x40, //
+    0x00, 0x40, 0x06, 0x11, 0x02, 0xc0, 0xa8, //
+    0x00, 0x18, 0x8e, 0xfa, 0x40, 0x6a, 0x9f, //
+    0x82, 0x01, 0xbb, 0x81, 0xbe, 0x34, 0xe3, //
+    0xda, 0x29, 0x3d, 0xa3, 0x80, 0x10, 0x02, //
+    0xb8, 0xc0, 0xd1, 0x00, 0x00, 0x01, 0x01, //
+    0x08, 0x0a, 0xa7, 0x5d, 0x1e, 0xc4, 0x31, //
+    0xb6, 0xbb, 0x8a,
+};
+
+test "Ethernet header size == " {
+    try testing.expect(packedSize(ethFrame) == 14);
+}
+
+test "Ethernet Frame" {
+    const localhostEth = TCPAckBytes[0..packedSize(ethFrame)];
+
+    const eth = toNativeValue(ethFrame, localhostEth);
+
+    try testing.expectEqual(0xdc6279edd314, eth.dst);
+    try testing.expectEqual(0x0185e0fc96f0d, eth.src);
+    try testing.expect(0x0800 == eth.frameType);
+
+    try testing.expectEqualSlices(u8, localhostEth, toNetworkBytes(ethFrame, eth));
+}
+
+test "IP header size == 20" {
+    try testing.expect(packedSize(ipHeader) == 20);
+}
+
+test "IP header" {
+    const ipBytes = TCPAckBytes[packedSize(ethFrame) .. packedSize(ethFrame) + packedSize(ipHeader)];
+    const iphdr = toNativeValue(ipHeader, ipBytes);
+    try std.testing.expectEqual(iphdr.version, 4);
+
+    const IHL: u32 = iphdr.length;
+    try std.testing.expectEqual(IHL * 32 / 8, 20);
+    try std.testing.expectEqual(iphdr.DSCP, 0);
+    try std.testing.expectEqual(iphdr.ECN, 0);
+    try std.testing.expectEqual(iphdr.totalLength, 52);
+    try std.testing.expectEqual(iphdr.identification, 0x999d);
+    try std.testing.expectEqual(fragmentFlags(iphdr.fragment), 0x2);
+    try std.testing.expectEqual(fragmentOffset(iphdr.fragment), 0x0);
+    try std.testing.expectEqual(iphdr.ttl, 64);
+    try std.testing.expectEqual(iphdr.protocol, @intFromEnum(ipProtocol.TCP));
+    try std.testing.expectEqual(iphdr.checksum, 0x1102);
+
+    // try std.testing.expectEqual(0x0, ipchecksum(@ptrCast(@alignCast(@constCast(&TCPAckBytes[0 .. packedSize(ethFrame) + packedSize(ipHeader)])))));
+    try std.testing.expectEqualSlices(u8, ipBytes, toNetworkBytes(ipHeader, iphdr));
+}
+
+test "TCP header" {
+    const preTCP = packedSize(ethFrame) + packedSize(ipHeader);
+    const tcpBytes = TCPAckBytes[preTCP .. preTCP + packedSize(tcpHeader)];
+    const tcpHdr = toNativeValue(tcpHeader, tcpBytes);
+    try std.testing.expectEqual(40834, tcpHdr.srcPort);
+    try std.testing.expectEqual(443, tcpHdr.dstPort);
+    try std.testing.expectEqual(2176726243, tcpHdr.seqNum);
+    try std.testing.expectEqual(3660135843, tcpHdr.ackNum);
+    try std.testing.expectEqual(0, tcpHdr.reserved);
+    try std.testing.expectEqual(8, tcpHdr.dataOffset);
+    try std.testing.expectEqual(0x010, tcpHdr.flags);
+    try std.testing.expectEqual(696, tcpHdr.windowSize);
+    try std.testing.expectEqual(0xc0d1, tcpHdr.checkSum);
+    try std.testing.expectEqual(0, tcpHdr.urgentPrt);
+}
+
+test "UDP header" {
+    // User Datagram Protocol, Src Port: 54435, Dst Port: 36176
+    // Source Port: 54435
+    // Destination Port: 36176
+    // Length: 45
+    // Checksum: 0x0000 [zero-value ignored]
+    // UDP payload (37 bytes)
+
+    const udpBytes = [_]u8{ 0xd4, 0xa3, 0x8d, 0x50, 0x00, 0x2d, 0x00, 0x00 };
+    const udpHdr = toNativeValue(udpHeader, &udpBytes);
+    try std.testing.expectEqual(54435, udpHdr.srcPort);
+    try std.testing.expectEqual(36176, udpHdr.dstPort);
+    try std.testing.expectEqual(45, udpHdr.legnth);
+}
