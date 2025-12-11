@@ -52,14 +52,17 @@ pub fn toNetworkBytes(comptime T: type, nativeStruct: T) []const u8 {
 }
 
 /// Ethernet frame type enum
-pub const EthFrametype = enum(u16) {
+pub const ethernetType = enum(u16) {
     IPv4 = 0x0800,
     ARP = 0x0806,
     _,
+    pub fn makeEthernetType(et: u16) ?ethernetType {
+        return @as(ethernetType, @enumFromInt(et)) catch null;
+    }
 };
 
 /// Ethernet frame structure
-pub const ethFrame = packed struct {
+pub const ethernet = packed struct {
     dst: u48,
     src: u48,
     frameType: u16,
@@ -71,6 +74,9 @@ pub const ipProtocol = enum(u8) {
     TCP = 0x06,
     UDP = 0x11,
     _,
+    pub fn makeipProtocol(proto: u8) ?ipProtocol {
+        return @as(ipProtocol, @enumFromInt(proto)) catch null;
+    }
 };
 
 /// IP fragmentation flag
@@ -154,7 +160,7 @@ test "TCP header no options size == 20" {
     try testing.expect(@bitSizeOf(tcpHeader) / 8 == 20);
 }
 
-const udpHeader = struct {
+pub const udpHeader = struct {
     srcPort: u16,
     dstPort: u16,
     legnth: u16,
@@ -232,19 +238,19 @@ const TCPAckBytes = [_]u8{
 };
 
 test "Ethernet header size == " {
-    try testing.expect(packedSize(ethFrame) == 14);
+    try testing.expect(packedSize(ethernet) == 14);
 }
 
 test "Ethernet Frame" {
-    const localhostEth = TCPAckBytes[0..packedSize(ethFrame)];
+    const localhostEth = TCPAckBytes[0..packedSize(ethernet)];
 
-    const eth = toNativeValue(ethFrame, localhostEth);
+    const eth = toNativeValue(ethernet, localhostEth);
 
     try testing.expectEqual(0xdc6279edd314, eth.dst);
     try testing.expectEqual(0x0185e0fc96f0d, eth.src);
     try testing.expect(0x0800 == eth.frameType);
 
-    try testing.expectEqualSlices(u8, localhostEth, toNetworkBytes(ethFrame, eth));
+    try testing.expectEqualSlices(u8, localhostEth, toNetworkBytes(ethernet, eth));
 }
 
 test "IP header size == 20" {
@@ -252,7 +258,7 @@ test "IP header size == 20" {
 }
 
 test "IP header" {
-    const ipBytes = TCPAckBytes[packedSize(ethFrame) .. packedSize(ethFrame) + packedSize(ipHeader)];
+    const ipBytes = TCPAckBytes[packedSize(ethernet) .. packedSize(ethernet) + packedSize(ipHeader)];
     const iphdr = toNativeValue(ipHeader, ipBytes);
     try std.testing.expectEqual(iphdr.version, 4);
 
@@ -268,12 +274,12 @@ test "IP header" {
     try std.testing.expectEqual(iphdr.protocol, @intFromEnum(ipProtocol.TCP));
     try std.testing.expectEqual(iphdr.checksum, 0x1102);
 
-    // try std.testing.expectEqual(0x0, ipchecksum(@ptrCast(@alignCast(@constCast(&TCPAckBytes[0 .. packedSize(ethFrame) + packedSize(ipHeader)])))));
+    // try std.testing.expectEqual(0x0, ipchecksum(@ptrCast(@alignCast(@constCast(&TCPAckBytes[0 .. packedSize(ethernet) + packedSize(ipHeader)])))));
     try std.testing.expectEqualSlices(u8, ipBytes, toNetworkBytes(ipHeader, iphdr));
 }
 
 test "TCP header" {
-    const preTCP = packedSize(ethFrame) + packedSize(ipHeader);
+    const preTCP = packedSize(ethernet) + packedSize(ipHeader);
     const tcpBytes = TCPAckBytes[preTCP .. preTCP + packedSize(tcpHeader)];
     const tcpHdr = toNativeValue(tcpHeader, tcpBytes);
     try std.testing.expectEqual(40834, tcpHdr.srcPort);
