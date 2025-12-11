@@ -34,7 +34,7 @@ fn compApplyToStruct(comptime T: type, func: anytype, d: *T) void {
 pub fn toNativeValue(comptime T: type, bytes: []const u8) T {
     var structReturned: T = undefined;
 
-    std.mem.copyForwards(u8, std.mem.asBytes(&structReturned), bytes);
+    @memmove(std.mem.asBytes(&structReturned)[0..packedSize(T)], bytes[0..packedSize(T)]);
     compApplyToStruct(T, std.mem.bigToNative, &structReturned);
 
     return structReturned;
