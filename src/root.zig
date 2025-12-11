@@ -48,7 +48,7 @@ pub fn toNativeValue(comptime T: type, bytes: []const u8) T {
 pub fn toNetworkBytes(comptime T: type, nativeStruct: T) []const u8 {
     var bytes: T = nativeStruct;
     compApplyToStruct(T, std.mem.nativeToBig, &bytes);
-    return std.mem.toBytes(bytes)[0 .. @bitSizeOf(T) / 8];
+    return std.mem.toBytes(bytes)[0..packedSize(T)];
 }
 
 /// Ethernet frame type enum
