@@ -56,9 +56,6 @@ pub const ethernetType = enum(u16) {
     IPv4 = 0x0800,
     ARP = 0x0806,
     _,
-    pub fn makeEthernetType(et: u16) ?ethernetType {
-        return @as(ethernetType, @enumFromInt(et)) catch null;
-    }
 };
 
 /// Ethernet frame structure
@@ -74,9 +71,6 @@ pub const ipProtocol = enum(u8) {
     TCP = 0x06,
     UDP = 0x11,
     _,
-    pub fn makeipProtocol(proto: u8) ?ipProtocol {
-        return @as(ipProtocol, @enumFromInt(proto)) catch null;
-    }
 };
 
 /// IP fragmentation flag
